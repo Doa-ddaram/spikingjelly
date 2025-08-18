@@ -2607,42 +2607,42 @@ class DSRLIFNode(base.MemoryModule):
                  backend='torch', **kwargs):
 
         """
-        * :ref:`中文API <DSRLIFNode.__init__-cn>`
+        * :ref:`訝��뻼API <DSRLIFNode.__init__-cn>`
 
         .. _DSRLIFNode.__init__-cn:
 
-        :param T: 时间步长
+        :param T: �뿶�뿴閭ι빣
         :type T: int
 
-        :param v_threshold: 神经元的阈值电压初始值
+        :param v_threshold: 曄욅퍘�뀇�쉪�삁��쇘뵷�럨�닜冶뗥��
         :type v_threshold: float
 
-        :param tau: 膜电位时间常数
+        :param tau: �넑�뵷鵝띷뿶�뿴躍멩빊
         :type tau: float
 
-        :param delta_t: 对微分方程形式的LIF模型进行离散化的步长
+        :param delta_t: 野밧쒜�늽�뼶葉뗥숱凉뤹쉪LIF與▼엹瓦쏂죱獵삥븺�뙑�쉪閭ι빣
         :type delta_t: float
 
-        :param alpha: 放电阈值的缩放因子
+        :param alpha: �붂�뵷�삁��쇘쉪煐⒵붂�썱耶�
         :type alpha: float
 
-        :param v_threshold_training: 是否将阈值电压设置为可学习参数，默认为`'True'`
+        :param v_threshold_training: �삸�맔弱녽삁��쇘뵷�럨溫양쉰訝뷴룾耶╊튌�뢿�빊竊뚪퍡溫ㅴ맏`'True'`
         :type v_threshold_training: bool
 
-        :param v_threshold_grad_scaling: 对放电阈值的梯度进行缩放的缩放因子
+        :param v_threshold_grad_scaling: 野방붂�뵷�삁��쇘쉪歟�佯�瓦쏂죱煐⒵붂�쉪煐⒵붂�썱耶�
         :type v_threshold_grad_scaling: float
 
-        :param v_threshold_lower_bound: 训练过程中，阈值电压能取到的最小值
+        :param v_threshold_lower_bound: 溫�瀯껇퓝葉뗤릎竊뚪삁��쇘뵷�럨�꺗�룚�댆�쉪���弱뤷��
         :type v_threshold_lower_bound: float
 
-        :param step_mode: 步进模式，只支持 `'m'` (多步)
+        :param step_mode: 閭θ퓵與▼폀竊뚦룵�뵱�똻 `'m'` (鸚싨��)
         :type step_mode: str
 
-        :param backend: 使用哪种后端。不同的 ``step_mode`` 可能会带有不同的后端。可以通过打印 ``self.supported_backends`` 查看当前
-            使用的步进模式支持的后端。在支持的情况下，使用 ``'cupy'`` 后端是速度最快的。DSR-IF只支持torch
+        :param backend: 鵝욜뵪�벆燁띶릮塋���귚툖�릪�쉪 ``step_mode`` �룾�꺗鴉싧를�쐣訝띶릪�쉪�릮塋���귛룾餓ι�싪퓝�돀�뜲 ``self.supported_backends`` �윥�쐦壤볟뎺
+            鵝욜뵪�쉪閭θ퓵與▼폀�뵱�똻�쉪�릮塋���귛쑉�뵱�똻�쉪�깄�넻訝뗰펽鵝욜뵪 ``'cupy'`` �릮塋��삸��잌벧���恙ョ쉪��괗SR-IF�룵�뵱�똻torch
         :type backend: str
 
-        模型出处：`Training High-Performance Low-Latency Spiking Neural Networks by Differentiation on Spike Representation
+        與▼엹�눣鸚꾬폏`Training High-Performance Low-Latency Spiking Neural Networks by Differentiation on Spike Representation
          <https://arxiv.org/pdf/2205.00459.pdf>`.
 
 
@@ -2731,10 +2731,9 @@ class DSRLIFNode(base.MemoryModule):
         return y_seq
 
     @classmethod
-    def weight_rate_spikes(cls, data, tau, delta_t):
-        T = data.shape[0]
-        chw = data.size()[2:]
-        data_reshape = data.permute(list(range(1, len(chw) + 2)) + [0])
+    def weight_rate_spikes(cls, data, T, tau, delta_t):
+        chw = data.size()[1:]
+        data_reshape = data.view(T, -1, *chw).permute(list(range(1, len(chw) + 2)) + [0])
         weight = torch.tensor([math.exp(-1 / tau * (delta_t * T - ii * delta_t)) for ii in range(1, T + 1)]).to(
             data_reshape.device)
         return (weight * data_reshape).sum(dim=len(chw) + 1) / weight.sum()
@@ -2744,16 +2743,18 @@ class DSRLIFNode(base.MemoryModule):
         def forward(ctx, inp, T, v_threshold, tau, delta_t=0.05, alpha=0.3, v_threshold_grad_scaling=1.0):
             ctx.save_for_backward(inp)
 
-            mem_potential = torch.zeros_like(inp[0]).to(inp.device)
+            chw = inp.size()[1:]
+            input_reshape = inp.view(T, -1, *chw)
+            mem_potential = torch.zeros(input_reshape.size(1), *chw).to(input_reshape.device)
             beta = math.exp(-delta_t / tau)
 
             spikes = []
-            for t in range(inp.size(0)):
-                mem_potential = beta * mem_potential + (1 - beta) * inp[t]
+            for t in range(input_reshape.size(0)):
+                mem_potential = beta * mem_potential + (1 - beta) * input_reshape[t]
                 spike = ((mem_potential >= alpha * v_threshold).float() * v_threshold).float()
                 mem_potential = mem_potential - spike
                 spikes.append(spike / delta_t)
-            output = torch.stack(spikes)
+            output = torch.cat(spikes, 0)
 
             ctx.T = T
             ctx.v_threshold = v_threshold
@@ -2762,6 +2763,7 @@ class DSRLIFNode(base.MemoryModule):
             ctx.v_threshold_grad_scaling = v_threshold_grad_scaling
             return output
 
+        
         @staticmethod
         def backward(ctx, grad_output):
             inp = ctx.saved_tensors[0]
@@ -2769,24 +2771,25 @@ class DSRLIFNode(base.MemoryModule):
             v_threshold = ctx.v_threshold
             delta_t = ctx.delta_t
             tau = ctx.tau
-            v_threshold_grad_scaling = ctx.v_threshold_grad_scaling
+            # v_threshold_grad_scaling = ctx.v_threshold_grad_scaling
 
-            input_rate_coding = DSRLIFNode.weight_rate_spikes(inp, tau, delta_t)
-            grad_output_coding = DSRLIFNode.weight_rate_spikes(grad_output, tau, delta_t) * T
+            input_rate_coding = DSRLIFNode.weight_rate_spikes(inp, T, tau, delta_t)
+            grad_output_coding = DSRLIFNode.weight_rate_spikes(grad_output, T, tau, delta_t) * T
 
             indexes = (input_rate_coding > 0) & (input_rate_coding < v_threshold / delta_t * tau)
             input_grad = torch.zeros_like(grad_output_coding)
             input_grad[indexes] = grad_output_coding[indexes].clone() / tau
-            input_grad = torch.stack([input_grad for _ in range(T)]) / T
+            input_grad = torch.cat([input_grad for _ in range(T)], 0) / T
 
             v_threshold_grad = grad_output_coding.clone()
             v_threshold_grad[input_rate_coding <= v_threshold / delta_t * tau] = 0
-            v_threshold_grad = torch.sum(v_threshold_grad) * delta_t * v_threshold_grad_scaling
-            if v_threshold_grad.is_cuda and torch.cuda.device_count() != 1:
-                try:
-                    dist.all_reduce(v_threshold_grad, op=dist.ReduceOp.SUM)
-                except:
-                    raise RuntimeWarning('Something wrong with the `all_reduce` operation when summing up the gradient of v_threshold from multiple gpus. Better check the gpu status and try DistributedDataParallel.')
+            v_threshold_grad = torch.sum(v_threshold_grad) * delta_t 
+            # if v_threshold_grad.is_cuda and torch.cuda.device_count() != 1:
+            #     try:
+            #         if dist.is_available() and dist.is_initialized():
+            #             dist.all_reduce(v_threshold_grad, op=dist.ReduceOp.SUM)
+            #     except:
+            #         raise RuntimeWarning('Something wrong with the `all_reduce` operation when summing up the gradient of v_threshold from multiple gpus. Better check the gpu status and try DistributedDataParallel.')
 
             return input_grad, None, v_threshold_grad, None, None, None, None
 
