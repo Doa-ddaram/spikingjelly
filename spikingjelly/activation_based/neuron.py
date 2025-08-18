@@ -2590,12 +2590,12 @@ class DSRIFNode(base.MemoryModule):
                 v_threshold_grad = grad_output_coding.clone()
                 v_threshold_grad[input_rate_coding <= v_threshold] = 0
                 v_threshold_grad = torch.sum(v_threshold_grad) * v_threshold_grad_scaling
-                if v_threshold_grad.is_cuda and torch.cuda.device_count() != 1:
-                    try:
-                        dist.all_reduce(v_threshold_grad, op=dist.ReduceOp.SUM)
-                    except:
-                        raise RuntimeWarning(
-                            'Something wrong with the `all_reduce` operation when summing up the gradient of v_threshold from multiple gpus. Better check the gpu status and try DistributedDataParallel.')
+                # if v_threshold_grad.is_cuda and torch.cuda.device_count() != 1:
+                #     try:
+                #         dist.all_reduce(v_threshold_grad, op=dist.ReduceOp.SUM)
+                #     except:
+                #         raise RuntimeWarning(
+                #             'Something wrong with the `all_reduce` operation when summing up the gradient of v_threshold from multiple gpus. Better check the gpu status and try DistributedDataParallel.')
 
                 return input_grad, None, v_threshold_grad, None, None
 
