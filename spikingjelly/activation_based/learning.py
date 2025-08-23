@@ -241,7 +241,7 @@ def stdp_multi_step(
 class STDPLearner(base.MemoryModule):
     def __init__(
         self, step_mode: str,
-        synapse: Union[nn.Conv2d, nn.Linear], sn: neuron.BaseNode,
+        synapse: Union[nn.Conv2d, nn.Linear], sn: Union[neuron.BaseNode, neuron.base.MemoryModule],
         tau_pre: float, tau_post: float,
         f_pre: Callable = lambda x: x, f_post: Callable = lambda x: x
     ):
