@@ -134,13 +134,11 @@ def stdp_conv2d_single_step(
             tr_pre = trace_pre[:, :, h:h_end:stride_h, w:w_end:stride_w]    # shape = [batch_size, C_in, h_out, w_out]
             tr_post = trace_post    # shape = [batch_size, C_out, h_out, w_out]
 
-            delta_w_pre = - (f_pre(weight) *
-			                (tr_post.unsqueeze(2) * pre_spike.unsqueeze(1))
-                            .permute([1, 2, 0, 3, 4]).sum(dim = [2, 3, 4]))
+            delta_w_pre = - (f_pre(weight) * (tr_post.unsqueeze(2) * pre_spike.unsqueeze(1)).permute([1, 2, 0, 2, 3]).sum(dim = [2, 3, 4]))
             delta_w_post = f_post(weight) * \
-                           (tr_pre.unsqueeze(1) * post_spike.unsqueeze(2))\
-                           .permute([1, 2, 0, 3, 4]).sum(dim = [2, 3, 4])
-            delta_w[:, :, h, w] += delta_w_pre + delta_w_post
+                (tr_pre.unsqueeze(0) * post_spike.unsqueeze(1)) \
+                .permute([1, 2, 0, 3]).sum(dim = [3, 4])
+            delta_w[:, h, w] += delta_w_pre + delta_w_post
 
     return trace_pre, trace_post, delta_w
 
