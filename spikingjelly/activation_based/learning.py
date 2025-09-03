@@ -133,12 +133,11 @@ def stdp_conv2d_single_step(
 
             tr_pre = trace_pre[:, :, h:h_end:stride_h, w:w_end:stride_w]    # shape = [batch_size, C_in, h_out, w_out]
             tr_post = trace_post    # shape = [batch_size, C_out, h_out, w_out]
-
-            delta_w_pre = - (f_pre(weight) * (tr_post.unsqueeze(2) * pre_spike.unsqueeze(1)).permute([1, 2, 0, 2, 3]).sum(dim = [2, 3, 4]))
-            delta_w_post = f_post(weight) * \
-                (tr_pre.unsqueeze(0) * post_spike.unsqueeze(1)) \
-                .permute([1, 2, 0, 3]).sum(dim = [3, 4])
-            delta_w[:, h, w] += delta_w_pre + delta_w_post
+            
+            delta_w_pre = - (f_pre(weight) * (tr_post.unsqueeze(2) * pre_spike.unsqueeze(1)).permute([1, 2, 0, 3, 4]).sum(dim = [2, 3, 4]))
+            delta_w_post = f_post(weight) * (tr_pre.unsqueeze(1) * post_spike.unsqueeze(2)).permute([1, 2, 0, 3, 4]).sum(dim = [2, 3, 4])
+            
+            delta_w[:, :, h, w] += delta_w_pre + delta_w_post
 
     return trace_pre, trace_post, delta_w
 
@@ -214,6 +213,12 @@ def stdp_multi_step(
 ):
     weight = layer.weight.data
     delta_w = torch.zeros_like(weight)
+    
+    chw_in = in_spike.size()[1:]
+    chw_out = out_spike.size()[1:]
+    in_spike = in_spike.view(20, -1 , *chw_in)
+    out_spike = out_spike.view(20, -1, *chw_out)
+    
     T = in_spike.shape[0]
 
     if isinstance(layer, nn.Linear):
@@ -250,6 +255,7 @@ class STDPLearner(base.MemoryModule):
         self.f_pre = f_pre
         self.f_post = f_post
         self.synapse = synapse
+        self.sn = sn
         self.in_spike_monitor = monitor.InputMonitor(synapse)
         self.out_spike_monitor = monitor.OutputMonitor(sn)
 
@@ -309,7 +315,7 @@ class STDPLearner(base.MemoryModule):
             if self.synapse.weight.grad is None:
                 self.synapse.weight.grad = -delta_w
             else:
-                self.synapse.weight.grad = self.synapse.weight.grad - delta_w
+                self.synapse.weight.grad -= delta_w
         else:
             return delta_w
 
